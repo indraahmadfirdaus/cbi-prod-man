@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/php.ini:/usr/local/etc/php/php.ini
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - CI_ENVIRONMENT=development
+      - app.baseURL=http://localhost:8080/
+      - database.default.hostname=sqlserver
+      - database.default.database=cbi_prod_man
+      - database.default.username=sa
+      - database.default.password=YourStrong@Passw0rd123
+      - database.default.DBDriver=SQLSRV
+      - database.default.port=1433
+      - database.default.encrypt=false
+      - database.default.trustServerCertificate=true
+    networks:
+      - app-network
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong@Passw0rd123
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./docker/startup.sh:/startup.sh
+    command: ["/bin/bash", "/startup.sh"]
+    healthcheck:
+      test: [
+        "CMD-SHELL", 
+        "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $$MSSQL_SA_PASSWORD -C -Q 'SELECT 1 FROM cbi_prod_man.dbo.kategori' || exit 1"
+      ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 80s
+    networks:
+      - app-network
+
+volumes:
+  sqlserver_data:
+
+networks:
+  app-network:
+    driver: bridge
