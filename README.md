@@ -16,6 +16,15 @@ More information about the plans for version 4 can be found in [CodeIgniter 4](h
 You can read the [user guide](https://codeigniter.com/user_guide/)
 corresponding to the latest version of the framework.
 
+## Technologies Used
+
+- **Backend Framework:** CodeIgniter 4
+- **PHP Version:** 8.2
+- **Database:** Microsoft SQL Server 2022 Express
+- **Web Server:** Apache 2.4
+- **Containerization:** Docker & Docker Compose
+- **Database Driver:** SQLSRV (Microsoft SQL Server PHP Extension)
+
 ## Requirements
 
 ### System Requirements
@@ -24,13 +33,15 @@ corresponding to the latest version of the framework.
 - **Git** (for cloning the repository)
 
 ### PHP Requirements (handled by Docker)
-PHP version 8.1 or higher is required, with the following extensions installed:
+PHP version 8.2 with the following extensions installed:
 
 - [intl](http://php.net/manual/en/intl.requirements.php)
 - [mbstring](http://php.net/manual/en/mbstring.installation.php)
+- [sqlsrv](https://docs.microsoft.com/en-us/sql/connect/php/microsoft-php-driver-for-sql-server) - Microsoft SQL Server PHP Driver
+- [pdo_sqlsrv](https://docs.microsoft.com/en-us/sql/connect/php/pdo-sqlsrv-driver-reference) - PDO Driver for SQL Server
 - json (enabled by default - don't turn it off)
-- [mysqlnd](http://php.net/manual/en/mysqlnd.install.php) for MySQL
 - [libcurl](http://php.net/manual/en/curl.requirements.php) for HTTP\CURLRequest library
+- gd, zip, bcmath, exif, pcntl extensions
 
 > [!WARNING]
 > - The end of life date for PHP 7.4 was November 28, 2022.
@@ -54,21 +65,24 @@ cp env .env
 
 Edit `.env` file and update the following variables:
 ```env
-# Database Configuration
-DB_HOST=db
-DB_PORT=3306
-DB_DATABASE=cbi_prod_man
-DB_USERNAME=root
-DB_PASSWORD=your_password
+# Environment
+CI_ENVIRONMENT = development
 
 # App Configuration
-app.baseURL=http://localhost:8080/
-app.indexPage=''
-app.appTimezone=Asia/Jakarta
-app.defaultLocale=en
+app.baseURL = 'http://localhost:8080/'
+app.forceGlobalSecureRequests = false
+app.CSPEnabled = false
 
-# Environment
-CI_ENVIRONMENT=development
+# SQL Server Database Configuration
+database.default.hostname = sqlserver
+database.default.database = cbi_prod_man
+database.default.username = sa
+database.default.password = 'YourStrong@Passw0rd123'
+database.default.DBDriver = SQLSRV
+database.default.DBPrefix = ''
+database.default.port = 1433
+database.default.encrypt = false
+database.default.trustServerCertificate = true
 ```
 
 ### 3. Docker Installation
@@ -119,7 +133,26 @@ docker-compose logs -f
 ### 5. Access the Application
 Once the containers are running, access the application at:
 - **Web Application:** http://localhost:8080
-- **Database:** localhost:3306 (from host machine)
+- **SQL Server Database:** localhost:1433 (from host machine)
+  - Username: `sa`
+  - Password: `YourStrong@Passw0rd123`
+  - Database: `cbi_prod_man`
+
+## Database Information
+
+### SQL Server Configuration
+- **Image:** mcr.microsoft.com/mssql/server:2022-latest
+- **Edition:** Express (free)
+- **Port:** 1433
+- **Authentication:** SQL Server Authentication
+- **Encryption:** Disabled for development
+- **Trust Server Certificate:** True
+
+### Connection Details
+- **Server:** sqlserver (container name) or localhost:1433 (from host)
+- **Database:** cbi_prod_man
+- **Driver:** SQLSRV
+- **PHP Extensions:** sqlsrv, pdo_sqlsrv
 
 ## API Documentation
 
@@ -252,6 +285,10 @@ cbi-prod-man/
 │   ├── Config/         # Configuration files
 │   └── Views/          # View templates
 ├── docker/             # Docker configuration
+│   ├── apache-config.conf
+│   ├── init-db.sql     # SQL Server initialization script
+│   ├── php.ini
+│   └── startup.sh      # SQL Server startup script
 ├── public/             # Web root
 └── writable/           # Logs and cache
 ```
@@ -266,44 +303,90 @@ docker-compose down
 docker-compose up -d --build
 
 # View application logs
-docker-compose logs -f app
+docker-compose logs -f web
 
-# View database logs
-docker-compose logs -f db
+# View SQL Server logs
+docker-compose logs -f sqlserver
 
 # Access application container
-docker-compose exec app bash
+docker-compose exec web bash
 
-# Access database
-docker-compose exec db mysql -u root -p
+# Access SQL Server using sqlcmd
+docker-compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd123' -C
 
 # Run migrations
-docker-compose exec app php spark migrate
+docker-compose exec web php spark migrate
 
 # Run seeders
-docker-compose exec app php spark db:seed
+docker-compose exec web php spark db:seed
+```
+
+### SQL Server Management
+
+```bash
+# Connect to SQL Server from host machine
+sqlcmd -S localhost,1433 -U sa -P 'YourStrong@Passw0rd123' -C
+
+# Or use SQL Server Management Studio (SSMS)
+# Server: localhost,1433
+# Authentication: SQL Server Authentication
+# Login: sa
+# Password: YourStrong@Passw0rd123
 ```
 
 ### Testing
 
 ```bash
 # Run tests
-docker-compose exec app php vendor/bin/phpunit
+docker-compose exec web php vendor/bin/phpunit
 
 # Run specific test
-docker-compose exec app php vendor/bin/phpunit tests/unit/HealthTest.php
+docker-compose exec web php vendor/bin/phpunit tests/unit/HealthTest.php
 ```
 
 ## Deployment
 
-For production deployment, see the deployment guide in the project documentation.
+For production deployment:
+
+1. **Change SQL Server Password:** Use a strong, unique password
+2. **Enable Encryption:** Set `database.default.encrypt = true`
+3. **Use SQL Server Standard/Enterprise:** For production workloads
+4. **Configure SSL:** Enable HTTPS and proper SSL certificates
+5. **Environment Variables:** Use secure environment variable management
 
 ## Important Notes
 
 - **Security:** This is a prototype application. Do not use in production without proper security review.
-- **Database:** The application uses MySQL 8.0 in Docker container.
+- **Database:** The application uses Microsoft SQL Server 2022 Express in Docker container.
 - **Environment:** Make sure to update `.env` file for different environments.
 - **Logs:** Application logs are stored in `writable/logs/` directory.
+- **SQL Server:** Uses Microsoft ODBC Driver 18 for SQL Server.
+- **PHP Extensions:** Includes sqlsrv and pdo_sqlsrv for SQL Server connectivity.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **SQL Server Connection Issues:**
+   ```bash
+   # Check if SQL Server is running
+   docker-compose logs sqlserver
+   
+   # Test connection
+   docker-compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd123' -C -Q "SELECT @@VERSION"
+   ```
+
+2. **PHP SQL Server Extension Issues:**
+   ```bash
+   # Check if extensions are loaded
+   docker-compose exec web php -m | grep sqlsrv
+   ```
+
+3. **Database Initialization:**
+   ```bash
+   # Check if database was created
+   docker-compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd123' -C -Q "SELECT name FROM sys.databases"
+   ```
 
 ## Repository Management
 
@@ -317,5 +400,3 @@ Problems with it can be raised on our forum, or as issues in the main repository
 ## License
 
 This project is open-sourced software licensed under the [MIT license](LICENSE).
-
-        
